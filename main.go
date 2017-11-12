@@ -97,15 +97,6 @@ func initDBConnection(host string, port int, user string, password string, dbnam
 	return db, err
 }
 
-/*
-db, err := sql.Open("postgres", psqlInfo)
-checkErr(err)
-
-err = db.Ping()
-if err != nil {
-	log.Fatal(err)
-}*/
-
 func main() {
 
 	//env vars
@@ -159,54 +150,42 @@ func main() {
 
 	//db check schema
 	if _, err = db.Exec(schema); err != nil {
-		fmt.Printf("Schema Error: %v \n", err)
+		fmt.Printf("Schema Creation skipped: %v \n", err)
 	}
-	checkErr(err)
 
 	//insert exchange rates
-	tx, err := db.Begin()
-	stmt, err := tx.Prepare("INSERT INTO exchange_rates(id, symbol, name, price, volume, supply, percentage, timestamp) VALUES($1,$2,$3,$4,$5,$6,$7,$8)")
-	defer stmt.Close()
-	if err != nil {
-		log.Fatal(err)
-	}
 	ts := start.Format("200601021504")
 	fmt.Printf("# Inserting '%d' coin exchange rate datepoints ...\n", len(coins))
 
+	valueStrings := make([]string, 0, len(coins))
+	valueArgs := make([]interface{}, 0, len(coins)*8)
+	i := 1
 	start = time.Now()
 	for _, coin := range coins {
 		id := fmt.Sprintf("%s_%s", ts, coin.Symbol)
-		_, err := stmt.Exec(id, coin.Symbol, coin.Name, coin.Price, coin.Volume, coin.Supply, coin.Percentage, ts)
+
+		valueStrings = append(valueStrings, fmt.Sprintf("($%d, $%d, $%d,$%d, $%d, $%d,$%d, $%d)", i, i+1, i+2, i+3, i+4, i+5, i+6, i+7))
+		i = i + 8
+		valueArgs = append(valueArgs, id)
+		valueArgs = append(valueArgs, coin.Symbol)
+		valueArgs = append(valueArgs, coin.Name)
+		valueArgs = append(valueArgs, coin.Price)
+		valueArgs = append(valueArgs, coin.Volume)
+		valueArgs = append(valueArgs, coin.Supply)
+		valueArgs = append(valueArgs, coin.Percentage)
+		valueArgs = append(valueArgs, ts)
+
 		fmt.Print(".")
-		if err != nil {
-			//log.Fatal(err)
-			//fmt.Println("Error: ", err)
-		}
-	}
-	err = tx.Commit()
-	if err != nil {
-		log.Fatal(err)
 	}
 	fmt.Println()
+	query := fmt.Sprintf("INSERT INTO exchange_rates(id, symbol, name, price, volume, supply, percentage, timestamp) VALUES %s", strings.Join(valueStrings, ","))
+	_, err = db.Exec(query, valueArgs...)
 	t = time.Now()
 	elapsed = t.Sub(start)
-	fmt.Printf("=> Exchange rate update took %v...\n", elapsed)
 
-	/*
-
-
-		        checkErr(err)
-
-
-				for _, coin := range coins {
-					//fmt.Printf("%s: %f \n", coin.Symbol, coin.Price)
-				}
-	*/
-}
-
-func checkErr(err error) {
 	if err != nil {
-		//panic(err)
-		fmt.Println("Error: ", err)
+		fmt.Printf("=> Adding new exchange rates skipped! This is most propably caused multiple updates running within one minute. (Processing time: %v, Error Message:%v)", elapsed, err)
+	} else {
+		fmt.Printf("=> Adding %d exchange rates processed in %s ...!", len(coins), elapsed)
 	}
 }
