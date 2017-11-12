@@ -39,6 +39,7 @@ type Specification struct {
 	DBSSLMode           string `default:"disable"`
 	DBConnectionRetries int    `default:"5"`
 	DBConnectionBackoff int    `default:"3"`
+	Schedule            int    `default:"600"`
 }
 
 var schema = `
@@ -102,15 +103,15 @@ func connectToDatabase(host string, port int, user string, password string, dbna
 }
 
 func initializeDBConnection(host string, port int, user string, password string, dbname string, sslmode string, retries int, backoff int) {
-	fmt.Printf(" * Initializing DB Connection (Retries: %d, Backoff: %d)\n", retries, backoff)
+	fmt.Printf("-> Initializing DB Connection (Retries: %d, Backoff: %d)\n", retries, backoff)
 	err := retry(retries, time.Duration(backoff)*time.Second, func() (err error) {
 		db, err = connectToDatabase(host, port, user, password, dbname, sslmode)
 		return
 	})
 	if err != nil {
-		fmt.Println(" * => Initialize DB Connection unsuccessful! Error: ", err)
+		fmt.Println("=> Initialize DB Connection unsuccessful! Error: ", err)
 	} else {
-		fmt.Println(" * => Initialize DB Connection successful!")
+		fmt.Println("=> Initialize DB Connection successful!")
 	}
 }
 
@@ -123,7 +124,6 @@ func initializeDBSchemas() {
 }
 
 func doEvery(d time.Duration, f func()) {
-	fmt.Printf(" ** doEvery: %v", d)
 	for _ = range time.Tick(d) {
 		f()
 	}
@@ -132,7 +132,7 @@ func doEvery(d time.Duration, f func()) {
 func crawlCoinCap() {
 	var coins []Coin
 	start := time.Now()
-	fmt.Printf(" * Start Crawling CoinCap (%s)...  \n", start)
+	fmt.Printf("-> Start Crawling CoinCap (%s)...  \n", start)
 
 	err := getJSON("http://coincap.io/front", &coins)
 	if err != nil {
@@ -175,9 +175,9 @@ func crawlCoinCap() {
 	elapsed = t.Sub(start)
 
 	if err != nil {
-		fmt.Printf(" * Adding new exchange rates skipped! Processing time: %v, Error Message: %v\n", elapsed, err)
+		fmt.Printf("=> Adding new exchange rates skipped! Processing time: %v, Error Message: %v\n", elapsed, err)
 	} else {
-		fmt.Printf(" * Adding %d exchange rates processed in %s ...!\n", len(coins), elapsed)
+		fmt.Printf("=> Adding %d exchange rates processed in %s ...!\n", len(coins), elapsed)
 	}
 }
 
@@ -186,6 +186,7 @@ func crawlExchangeRates(interval int) {
 	if interval > 0 {
 		intervalDuration := time.Duration(interval) * time.Second
 		fmt.Printf("=> Scheduling crawling CoinCap every %v!\n", intervalDuration)
+		crawlCoinCap()
 		doEvery(intervalDuration, crawlCoinCap)
 	} else {
 		fmt.Printf("=> Crawling CoinCap once!\n")
@@ -204,8 +205,8 @@ func main() {
 		log.Fatal(err.Error())
 	}
 
-	format := "Used Config Values:\n - Host: %s\n - Port: %d\n - User: %s\n - Password: %s\n - DBName: %s\n - SSLMode: %s\n"
-	_, err = fmt.Printf(format, s.DBHost, s.DBPort, s.DBUser, s.DBPassword, s.DBName, s.DBSSLMode)
+	format := "Used Config Values:\n - Host: %s\n - Port: %d\n - User: %s\n - Password: %s\n - DBName: %s\n - SSLMode: %s\n - DBRetries: %d\n - DBBackoff: %d\n - Interval: %d\n"
+	_, err = fmt.Printf(format, s.DBHost, s.DBPort, s.DBUser, s.DBPassword, s.DBName, s.DBSSLMode, s.DBConnectionRetries, s.DBConnectionBackoff, s.Schedule)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -223,6 +224,6 @@ func main() {
 	initializeDBSchemas()
 
 	//get exchange rates
-	crawlExchangeRates(30)
+	crawlExchangeRates(s.Schedule)
 
 }
